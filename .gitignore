@@ -1,3 +1,8 @@
+# Sensitive config
+google-credentials.json
+
+# VS Code settings (optional)
+.vscode/
 # Logs
 logs
 *.log

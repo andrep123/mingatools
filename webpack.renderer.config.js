@@ -1,3 +1,7 @@
+module.exports.node = {
+  __dirname: false,
+  __filename: false,
+};
 const rules = require('./webpack.rules');
 
 rules.push({

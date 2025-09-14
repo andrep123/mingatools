@@ -1,3 +1,4 @@
+const { Menu } = require('electron');
 // Archive a sent folder into 'TOC online' after email send
 function archiveSentFolder(files, folder, event) {
   let refreshDespesasPath = null;
@@ -14,22 +15,36 @@ function archiveSentFolder(files, folder, event) {
         const parentFolder = parts.slice(0, idx + 1).join(require('path').sep); // .../parent/despesas
         const sentFolderPath = require('path').join(parentFolder, folder); // .../parent/despesas/folder
         const tocOnlinePath = require('path').join(parentFolder, 'TOC online'); // INSIDE despesas
-        const archivePath = require('path').join(tocOnlinePath, folder);
-        console.log('[Archive] parentFolder:', parentFolder);
-        console.log('[Archive] sentFolderPath:', sentFolderPath);
-        console.log('[Archive] tocOnlinePath:', tocOnlinePath);
-        console.log('[Archive] archivePath:', archivePath);
+        let archivePath = require('path').join(tocOnlinePath, folder);
+
+        // Ensure 'TOC online' exists
         if (!fs.existsSync(tocOnlinePath)) {
-          console.log('[Archive] Creating TOC online folder:', tocOnlinePath);
           fs.mkdirSync(tocOnlinePath, { recursive: true });
         }
-        if (fs.existsSync(sentFolderPath)) {
-          console.log('[Archive] Moving folder:', sentFolderPath, '->', archivePath);
-          fs.renameSync(sentFolderPath, archivePath);
-          refreshDespesasPath = parentFolder;
-        } else {
-          console.error('[Archive] Sent folder does not exist:', sentFolderPath);
+
+        // If archivePath exists, append a timestamp suffix
+        if (fs.existsSync(archivePath)) {
+          const now = new Date();
+          const yyyy = now.getFullYear();
+          const mm = String(now.getMonth() + 1).padStart(2, '0');
+          const dd = String(now.getDate()).padStart(2, '0');
+          const timestamp = `${yyyy}_${mm}_${dd}`;
+          archivePath = require('path').join(tocOnlinePath, `${folder}_${timestamp}`);
         }
+
+        try {
+          fs.renameSync(sentFolderPath, archivePath);
+          // Optionally notify renderer of success
+          if (event && event.sender) {
+            event.sender.send('archive-success', `Folder archived as "${path.basename(archivePath)}"`);
+          }
+        } catch (err) {
+          // Optionally notify renderer of error
+          if (event && event.sender) {
+            event.sender.send('archive-error', `Failed to archive folder: ${err.message}`);
+          }
+        }
+        refreshDespesasPath = parentFolder;
       } else {
         console.error('[Archive] Could not find "despesas" in path:', filePath);
       }
@@ -52,10 +67,10 @@ const jwt = require('jsonwebtoken');
 
 
 const fs = require('fs');
+const path = require('path');
 const { google } = require('googleapis');
 const googleOAuth = require('./google-oauth');
 const os = require('os');
-const path = require('node:path');
 
 
 // Path to your downloaded OAuth2 credentials file
@@ -91,6 +106,8 @@ const createWindow = () => {
   const mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
+    // Use process.cwd() for icon path in dev mode
+    icon: path.resolve(process.cwd(), 'assets/app-icon.png'),
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       contextIsolation: true,
@@ -110,6 +127,39 @@ const createWindow = () => {
 // Some APIs can only be used after this event occurs.
 
 app.whenReady().then(() => {
+  // Set a minimal application menu (File and Edit)
+  const minimalMenu = Menu.buildFromTemplate([
+    {
+      label: 'File',
+      submenu: [
+        { role: 'quit' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    }
+  ]);
+  Menu.setApplicationMenu(minimalMenu);
+  // Set the dock icon on macOS (shows in dock during development)
+  if (process.platform === 'darwin') {
+    // Use process.cwd() so it works in dev mode with Electron Forge + webpack
+    const iconPath = path.resolve(process.cwd(), 'assets/app-icon.png');
+    if (fs.existsSync(iconPath)) {
+      console.log('[App Icon] Setting dock icon:', iconPath);
+      app.dock.setIcon(iconPath);
+    } else {
+      console.warn('[App Icon] Icon file not found:', iconPath);
+    }
+  }
   // Ensure config.json exists with defaults
   if (!fs.existsSync(configPath)) {
     fs.writeFileSync(configPath, JSON.stringify({
@@ -183,6 +233,7 @@ ipcMain.handle('get-files', async (event, folderPath) => {
 // IPC: Send email with attachments to TOC online
 ipcMain.handle('send-toc-email', async (event, { files, config, folder, CentroCustos }) => {
   try {
+    console.log('[IPC] send-toc-email called', new Date().toISOString());
     // CentroCustos is now available from destructuring
     // Get OAuth2 client and token
     const oAuth2Client = googleOAuth.getOAuth2Client();
@@ -287,6 +338,15 @@ ipcMain.handle('send-toc-email', async (event, { files, config, folder, CentroCu
 
     // Archive after email send
     archiveSentFolder(files, folder, event);
+
+    // If some files were missing, return a warning, not an error
+    if (missingFiles.length > 0) {
+      return {
+        success: true,
+        warning: `Email sent, but some files could not be attached: ${missingFiles.join(', ')}`
+      };
+    }
+
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
@@ -357,6 +417,7 @@ module.exports = { getOAuth2Client, getStoredToken, TOKEN_PATH };
 
 // IPC: Save configuration
 ipcMain.handle('save-config', async (event, config) => {
+  console.log('[Config] Saving config to', configPath, 'with data:', config);
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
   return true;
 });
@@ -364,8 +425,11 @@ ipcMain.handle('save-config', async (event, config) => {
 // IPC: Get configuration
 ipcMain.handle('get-config', async () => {
   try {
-    return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const data = fs.readFileSync(configPath, 'utf8');
+    console.log('[Config] Reading config from', configPath, 'data:', data);
+    return JSON.parse(data);
   } catch (e) {
+    console.warn('[Config] Failed to read config from', configPath, e);
     return {};
   }
 });
@@ -444,4 +508,20 @@ ipcMain.handle('get-google-user-email', async () => {
   }
 
   return null;
+});
+
+// Get app version
+const { version } = require('../package.json');
+ipcMain.handle('get-app-version', () => version);
+
+// IPC: Google sign-out
+ipcMain.handle('google-sign-out', async () => {
+  try {
+    if (fs.existsSync(TOKEN_PATH)) {
+      fs.unlinkSync(TOKEN_PATH);
+    }
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
 });

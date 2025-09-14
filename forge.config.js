@@ -1,3 +1,5 @@
+
+const path = require('path');
 const { FusesPlugin } = require('@electron-forge/plugin-fuses');
 const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 
@@ -46,6 +48,7 @@ module.exports = {
             },
           ],
         },
+        preloadConfig: './webpack.preload.config.js',
       },
     },
     // Fuses are used to enable/disable various Electron functionality

@@ -35,3 +35,12 @@ import './index.css';
 const container = document.getElementById('root');
 const root = createRoot(container);
 root.render(<App />);
+
+// Only show 'Read and Send Expenses' and 'Configuration' in the sidebar menu
+const menuItems = [
+  { key: 'read', label: 'Read and Send Expenses' },
+  { key: 'config', label: 'Configuration' },
+];
+
+// If you render the sidebar here or in App.js, ensure you use this menuItems array
+// and do not render any Adapt Subject String menu

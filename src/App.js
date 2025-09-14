@@ -49,38 +49,6 @@ const AdaptSubjectString = () => {
 
   return (
     <div style={{ padding: 32, position: 'relative' }}>
-      <h1>Adapt Subject String</h1>
-      <textarea
-        style={{ width: '100%', height: 80 }}
-        value={input}
-        onChange={e => setInput(e.target.value)}
-        placeholder="Paste your string here..."
-      />
-      <br /><br />
-      <textarea
-        style={{ width: '100%', height: 80 }}
-        value={output}
-        readOnly
-        placeholder="Transformed string..."
-      />
-      <br /><br />
-      <button disabled>Copy Result</button>
-      {copied && (
-        <div style={{
-          position: 'fixed',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: '#222',
-          color: '#fff',
-          textAlign: 'center',
-          padding: '12px 0',
-          fontSize: 16,
-          zIndex: 9999,
-        }}>
-          Copied to clipboard!
-        </div>
-      )}
     </div>
   );
 };
@@ -100,8 +68,8 @@ const ReadAndSendExpenses = ({ topNotification, setTopNotification }) => {
   // Store the selected folder as CentroCustos
   const [CentroCustos, setCentroCustos] = React.useState(null);
   // Progress bar state
-  const [sending, setSending] = React.useState(false);
-  const [progress, setProgress] = React.useState(0);
+  const [sending, setSending] = useState(false);
+  const [progress, setProgress] = useState(0);
   const currentFolderRef = React.useRef(null);
   React.useEffect(() => { currentFolderRef.current = currentFolder; }, [currentFolder]);
 
@@ -134,9 +102,10 @@ const ReadAndSendExpenses = ({ topNotification, setTopNotification }) => {
   React.useEffect(() => {
     const loadFilteredFolders = async () => {
       setLoadingFolders(true);
-      const allFolders = await window.electron?.ipcRenderer.invoke('get-folders');
-      const config = await window.electron?.ipcRenderer.invoke('get-config');
-      const base = config.searchFolder || '';
+  let allFolders = await window.electron?.ipcRenderer.invoke('get-folders');
+  if (!Array.isArray(allFolders)) allFolders = [];
+  const config = await window.electron?.ipcRenderer.invoke('get-config');
+  const base = config && config.searchFolder ? config.searchFolder : '';
       const filtered = [];
       for (const folder of allFolders) {
         // Build path to despesas subfolder
@@ -160,8 +129,8 @@ const ReadAndSendExpenses = ({ topNotification, setTopNotification }) => {
     setCurrentFolder(folder);
     setCentroCustos(folder); // Store selected folder as CentroCustos
     // Get config to build full path
-    const config = await window.electron?.ipcRenderer.invoke('get-config');
-    const base = config.searchFolder || '';
+  const config = await window.electron?.ipcRenderer.invoke('get-config');
+  const base = config && config.searchFolder ? config.searchFolder : '';
     // Always drill into the 'despesas' subfolder inside the selected folder
     const fullPath = base ? `${base}/${folder}/despesas` : `${folder}/despesas`;
     // Ask main process for subfolders inside 'despesas'
@@ -294,6 +263,7 @@ const ReadAndSendExpenses = ({ topNotification, setTopNotification }) => {
                 <span style={{ wordBreak: 'break-all', flex: 1 }}>{sub}</span>
                 <button
                   onClick={async () => {
+                    if (sending) return; // Prevent double send
                     setSending(true);
                     setProgress(10);
                     const config = await window.electron?.ipcRenderer.invoke('get-config');
@@ -305,12 +275,7 @@ const ReadAndSendExpenses = ({ topNotification, setTopNotification }) => {
                     setProgress(50);
                     const filePaths = files.map(f => `${folderPath}/${f}`);
                     setProgress(70);
-                    await window.electron?.ipcRenderer.invoke('send-toc-email', {
-                      files: filePaths,
-                      config,
-                      folder: sub,
-                      CentroCustos: CentroCustos
-                    });
+                    // Only call send-toc-email ONCE
                     const result = await window.electron?.ipcRenderer.invoke('send-toc-email', {
                       files: filePaths,
                       config,
@@ -323,7 +288,11 @@ const ReadAndSendExpenses = ({ topNotification, setTopNotification }) => {
                     subs = subs.filter(s => s.toLowerCase() !== 'toc online');
                     setSubfolders(subs);
                     if (result && result.success) {
-                      setTopNotification({ type: 'email', message: `Email sent`, subject: `${CentroCustos} - ${sub}`, color: 'blue' });
+                      if (result.warning) {
+                        setTopNotification({ type: 'email-warning', message: result.warning, color: 'orange' });
+                      } else {
+                        setTopNotification({ type: 'email', message: `Email sent`, subject: `${CentroCustos} - ${sub}`, color: 'blue' });
+                      }
                     } else {
                       setTopNotification({ type: 'email-error', message: `Error sending email: ${result?.error || 'Unknown error'}`, color: 'red' });
                     }
@@ -332,10 +301,13 @@ const ReadAndSendExpenses = ({ topNotification, setTopNotification }) => {
                       setProgress(0);
                     }, 800);
                   }}
+                  disabled={sending}
                   style={{ padding: '8px 20px', fontSize: 16, background: '#2196f3', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600, boxShadow: '0 1px 4px #2196f355', transition: 'background 0.2s', marginLeft: 8 }}
                   onMouseOver={e => e.currentTarget.style.background = '#1769aa'}
                   onMouseOut={e => e.currentTarget.style.background = '#2196f3'}
-                >Send to TOC online</button>
+                >
+                  Send to TOC online
+                </button>
                 {hovered === sub && popupY !== null && (
                   <div style={{
                     position: 'fixed',
@@ -375,7 +347,7 @@ const ReadAndSendExpenses = ({ topNotification, setTopNotification }) => {
 
 
 // Configuration Component
-const Configuration = () => {
+const Configuration = ({ setRefreshGoogleStatusSignal }) => {
   const [searchFolder, setSearchFolder] = React.useState('');
   const [senderEmail, setSenderEmail] = React.useState('');
   const [receiverEmail, setReceiverEmail] = React.useState('');
@@ -385,11 +357,6 @@ const Configuration = () => {
   const [showCodeModal, setShowCodeModal] = React.useState(false);
   const [codeInput, setCodeInput] = React.useState('');
   const [awaitingGoogleCode, setAwaitingGoogleCode] = React.useState(false);
-
-  // Debug: log when showCodeModal changes
-  React.useEffect(() => {
-    console.log('showCodeModal changed:', showCodeModal);
-  }, [showCodeModal]);
 
   React.useEffect(() => {
     window.electron?.ipcRenderer.invoke('get-config').then(cfg => {
@@ -415,14 +382,11 @@ const Configuration = () => {
   };
 
   const handleGoogleSignIn = async () => {
-    console.log('handleGoogleSignIn called');
     setGoogleError('');
     setShowCodeModal(true);
     setAwaitingGoogleCode(true);
-    console.log('setShowCodeModal(true) called');
     try {
       await window.electron?.ipcRenderer.invoke('google-sign-in');
-      console.log('google-sign-in IPC completed');
     } catch (err) {
       console.error('Error in google-sign-in IPC:', err);
     }
@@ -431,13 +395,13 @@ const Configuration = () => {
   const handleCodeSubmit = async () => {
     if (codeInput) {
       const res = await window.electron?.ipcRenderer.invoke('google-sign-in-code', codeInput);
-      console.log('google-sign-in-code response:', res);
       setShowCodeModal(false);
       setCodeInput('');
       setAwaitingGoogleCode(false);
       if (res && res.success) {
         setGoogleSignedIn(true);
         alert('Google sign-in successful!');
+        setRefreshGoogleStatusSignal(s => !s); // Refresh sidebar
       } else {
         setGoogleSignedIn(false);
         setGoogleError(res && res.error ? res.error : 'Sign-in failed');
@@ -447,9 +411,19 @@ const Configuration = () => {
     }
   };
 
+  const handleSignOut = async () => {
+    const res = await window.electron?.ipcRenderer.invoke('google-sign-out');
+    if (res && res.success) {
+      setGoogleSignedIn(false);
+      setRefreshGoogleStatusSignal(s => !s); // Toggle to trigger sidebar refresh
+      alert('Signed out from Google.');
+    } else {
+      alert('Failed to sign out: ' + (res && res.error ? res.error : 'Unknown error'));
+    }
+  };
+
   return (
     <>
-      {/* Notification always rendered at top-level, above everything */}
       {showCodeModal && (
         <div style={{
           position: 'fixed', top: 16, right: 16, background: '#2196f3', color: '#fff', padding: '10px 20px', borderRadius: 6, zIndex: 20000,
@@ -486,35 +460,49 @@ const Configuration = () => {
           <input value={year} onChange={e => setYear(e.target.value)} style={{ width: '100%' }} />
         </div>
         <button onClick={handleSave}>Save Configuration</button>
-        <button
-          style={{ marginLeft: 16, background: '#673ab7', color: '#fff', padding: '8px 16px', border: 'none', borderRadius: 4 }}
-          onClick={async () => {
-            try {
-              const res = await window.electron?.ipcRenderer.invoke('send-test-email', {
-                to: 'chiribi@gmail.com',
-                subject: 'test',
-                text: 'This is a test email from the Electron app.'
-              });
-              if (res && res.success) {
-                alert('Test email sent!');
-              } else {
-                alert('Failed to send test email: ' + (res && res.error ? res.error : 'Unknown error'));
-              }
-            } catch (e) {
-              alert('Error sending test email: ' + e.message);
-            }
-          }}
-        >Send Test Email</button>
-        <div style={{ marginTop: 32 }}>
+        {googleSignedIn && (
           <button
-            onClick={handleGoogleSignIn}
-            style={{ background: googleSignedIn ? '#4caf50' : '#2196f3', color: '#fff', padding: '8px 16px', border: 'none', borderRadius: 4 }}
-          >{googleSignedIn ? 'Signed in with Google' : 'Sign in with Google'}</button>
+            style={{ marginLeft: 16, background: '#673ab7', color: '#fff', padding: '8px 16px', border: 'none', borderRadius: 4 }}
+            onClick={async () => {
+              try {
+                const res = await window.electron?.ipcRenderer.invoke('send-test-email', {
+                  to: 'chiribi@gmail.com',
+                  subject: 'test',
+                  text: 'This is a test email from the Electron app.'
+                });
+                if (res && res.success) {
+                  alert('Test email sent!');
+                } else {
+                  alert('Failed to send test email: ' + (res && res.error ? res.error : 'Unknown error'));
+                }
+              } catch (e) {
+                alert('Error sending test email: ' + e.message);
+              }
+            }}
+          >Send Test Email</button>
+        )}
+        <div style={{ marginTop: 32 }}>
+          {!googleSignedIn && (
+            <button
+              onClick={handleGoogleSignIn}
+              style={{ background: '#2196f3', color: '#fff', padding: '8px 16px', border: 'none', borderRadius: 4 }}
+            >
+              Sign in with Google
+            </button>
+          )}
           {awaitingGoogleCode && !showCodeModal && !googleSignedIn && (
             <button
               onClick={() => setShowCodeModal(true)}
               style={{ marginLeft: 12, background: '#ff9800', color: '#fff', padding: '8px 16px', border: 'none', borderRadius: 4 }}
             >Paste Google Auth Code</button>
+          )}
+          {googleSignedIn && (
+            <button
+              style={{ marginLeft: 12, background: '#f44336', color: '#fff', padding: '8px 16px', border: 'none', borderRadius: 4 }}
+              onClick={handleSignOut}
+            >
+              Sign Out
+            </button>
           )}
           {googleError && <div style={{ color: 'red', marginTop: 8 }}>{googleError}</div>}
         </div>
@@ -552,44 +540,44 @@ const Configuration = () => {
 
 const App = () => {
   const [view, setView] = useState('adapt');
-
-  // Top notification state for all pages
   const [topNotification, setTopNotification] = useState(null);
+  // Add refreshGoogleStatusSignal state here
+  const [refreshGoogleStatusSignal, setRefreshGoogleStatusSignal] = useState(false);
 
   let content;
   if (view === 'adapt') content = <AdaptSubjectString />;
   else if (view === 'expenses') content = <ReadAndSendExpenses topNotification={topNotification} setTopNotification={setTopNotification} />;
-  else if (view === 'config') content = <Configuration />;
+  else if (view === 'config') content = <Configuration setRefreshGoogleStatusSignal={setRefreshGoogleStatusSignal} />;
 
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
-      <Sidebar currentView={view} setView={setView} />
+      <Sidebar currentView={view} setView={setView} refreshGoogleStatusSignal={refreshGoogleStatusSignal} />
       <div style={{ flex: 1, background: '#f5f5f5', display: 'flex', flexDirection: 'column', alignItems: 'center', overflowY: 'auto' }}>
         {/* Top notification area */}
         {topNotification && (
-          <div style={{
-            position: 'sticky',
-            top: 0,
-            left: 0,
-            right: 0,
-            background: topNotification.color === 'red' ? '#d32f2f' : '#2196f3',
-            color: '#fff',
-            padding: '10px 24px',
-            borderRadius: 8,
-            margin: '24px 0 0 0',
-            zIndex: 3000,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-            fontWeight: 'bold',
-            fontSize: 17,
-            maxWidth: 600,
-            textAlign: 'center',
-          }}>
-            {topNotification.type === 'email' ? (
-              <span>Email sent: <b>{topNotification.subject}</b></span>
-            ) : topNotification.type === 'email-error' ? (
-              <span>{topNotification.message}</span>
-            ) : (
-              <span>{topNotification.message}</span>
+          <div
+            style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 1000,
+              background: topNotification.color === 'red' ? '#ffeded' : topNotification.color === 'blue' ? '#e3f2fd' : '#fffbe6',
+              color: topNotification.color === 'red' ? '#c00' : topNotification.color === 'blue' ? '#1769aa' : '#b8860b',
+              borderBottom: `2px solid ${topNotification.color === 'red' ? '#c00' : topNotification.color === 'blue' ? '#2196f3' : '#b8860b'}`,
+              padding: '10px 20px',
+              fontWeight: 500,
+              fontSize: 16,
+              textAlign: 'center',
+              maxHeight: 60,
+              overflowY: 'auto',
+              scrollbarWidth: 'thin', // for Firefox
+              boxShadow: '0 2px 8px #0001'
+            }}
+          >
+            {topNotification.message}
+            {topNotification.subject && (
+              <span style={{ marginLeft: 8, fontWeight: 400, color: '#555' }}>
+                {topNotification.subject}
+              </span>
             )}
           </div>
         )}
