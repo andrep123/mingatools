@@ -1,4 +1,56 @@
-const { Menu } = require('electron');
+// --- Electron and core requires at the top ---
+
+// Electron and core modules
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const jwt = require('jsonwebtoken');
+const { google } = require('googleapis');
+const googleOAuth = require('./google-oauth');
+const ElectronGoogleOAuth2 = require('electron-google-oauth2').default;
+
+// Load Google OAuth2 credentials from google-credentials.json (excluded from git)
+const CREDENTIALS_PATH = path.join(app.getAppPath(), 'google-credentials.json');
+let GOOGLE_CLIENT_ID = '';
+let GOOGLE_CLIENT_SECRET = '';
+const GOOGLE_SCOPES = [
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'https://mail.google.com/',
+  'https://www.googleapis.com/auth/gmail.send'
+];
+
+try {
+  const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf8'));
+  // For Google Cloud Console downloaded file, use credentials.installed
+  if (credentials.installed) {
+    GOOGLE_CLIENT_ID = credentials.installed.client_id;
+    GOOGLE_CLIENT_SECRET = credentials.installed.client_secret;
+  } else {
+    // For custom format
+    GOOGLE_CLIENT_ID = credentials.client_id;
+    GOOGLE_CLIENT_SECRET = credentials.client_secret;
+  }
+} catch (err) {
+  console.error('[Google OAuth] Failed to load credentials from google-credentials.json:', err.message);
+}
+
+// User-friendly Google sign-in IPC handler
+ipcMain.handle('google-sign-in-user-friendly', async () => {
+  try {
+    const myOAuth = new ElectronGoogleOAuth2(
+      GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET,
+      GOOGLE_SCOPES
+    );
+    const tokens = await myOAuth.openAuthWindowAndGetTokens();
+    fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens, null, 2));
+    return { success: true, tokens };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
 // Archive a sent folder into 'TOC online' after email send
 function archiveSentFolder(files, folder, event) {
   let refreshDespesasPath = null;
@@ -62,19 +114,14 @@ function archiveSentFolder(files, folder, event) {
 // For Google sign-in code exchange
 let googleSignInCodeResolver = null;
 
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
-const jwt = require('jsonwebtoken'); 
 
 
-const fs = require('fs');
-const path = require('path');
-const { google } = require('googleapis');
-const googleOAuth = require('./google-oauth');
-const os = require('os');
+
+
+
 
 
 // Path to your downloaded OAuth2 credentials file
-const CREDENTIALS_PATH = path.join(app.getAppPath(), 'google-credentials.json');
 const TOKEN_PATH = path.join(app.getPath('userData'), 'google-token.json');
 
 // Google OAuth2 helper for Electron main process
@@ -354,7 +401,7 @@ ipcMain.handle('send-toc-email', async (event, { files, config, folder, CentroCu
 });
 
 
-const { shell } = require('electron'); // Add at the top if not present
+
 
 // IPC handler: Sign in with Google
 ipcMain.handle('google-sign-in', async (event) => {

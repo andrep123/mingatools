@@ -504,6 +504,26 @@ const Configuration = ({ setRefreshGoogleStatusSignal }) => {
               Sign Out
             </button>
           )}
+          {/* User-friendly Google Sign In button (only visible when not signed in) */}
+          {!googleSignedIn && (
+            <button
+              style={{ marginLeft: 12, background: '#43a047', color: '#fff', padding: '8px 16px', border: 'none', borderRadius: 4 }}
+              onClick={async () => {
+                if (!window.electron) {
+                  alert('Electron context not available.');
+                  return;
+                }
+                const result = await window.electron.ipcRenderer.invoke('google-sign-in-user-friendly');
+                if (result && result.success) {
+                  alert('User-friendly Google sign-in successful!');
+                  setGoogleSignedIn(true);
+                  setRefreshGoogleStatusSignal(s => !s);
+                } else {
+                  alert('User-friendly Google sign-in failed: ' + (result && result.error ? result.error : 'Unknown error'));
+                }
+              }}
+            >Google Sign In (user friendly)</button>
+          )}
           {googleError && <div style={{ color: 'red', marginTop: 8 }}>{googleError}</div>}
         </div>
         {showCodeModal && (

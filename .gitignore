@@ -1,6 +1,10 @@
 # Sensitive config
 google-credentials.json
 
+# Git backup directories (BFG cleanup)
+mingatools-backup.git/
+*.git.bfg-report/
+
 # VS Code settings (optional)
 .vscode/
 # Logs
