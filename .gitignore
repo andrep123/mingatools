@@ -7,6 +7,10 @@ mingatools-backup.git/
 
 # VS Code settings (optional)
 .vscode/
+
+# Visual Studio settings
+.vs/
+
 # Logs
 logs
 *.log
