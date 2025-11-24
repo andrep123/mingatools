@@ -14,6 +14,7 @@ const ElectronGoogleOAuth2 = require('electron-google-oauth2').default;
 const CREDENTIALS_PATH = path.join(app.getAppPath(), 'google-credentials.json');
 let GOOGLE_CLIENT_ID = '';
 let GOOGLE_CLIENT_SECRET = '';
+let CREDENTIALS_ERROR = null; // Track if there was an error loading credentials
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
@@ -22,23 +23,45 @@ const GOOGLE_SCOPES = [
 ];
 
 try {
-  const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf8'));
-  // For Google Cloud Console downloaded file, use credentials.installed
-  if (credentials.installed) {
-    GOOGLE_CLIENT_ID = credentials.installed.client_id;
-    GOOGLE_CLIENT_SECRET = credentials.installed.client_secret;
+  if (!fs.existsSync(CREDENTIALS_PATH)) {
+    CREDENTIALS_ERROR = 'File not found';
+    console.error('[Google OAuth] Credentials file not found:', CREDENTIALS_PATH);
   } else {
-    // For custom format
-    GOOGLE_CLIENT_ID = credentials.client_id;
-    GOOGLE_CLIENT_SECRET = credentials.client_secret;
+    const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf8'));
+    // For Google Cloud Console downloaded file, use credentials.installed
+    if (credentials.installed) {
+      GOOGLE_CLIENT_ID = credentials.installed.client_id;
+      GOOGLE_CLIENT_SECRET = credentials.installed.client_secret;
+    } else {
+      // For custom format
+      GOOGLE_CLIENT_ID = credentials.client_id;
+      GOOGLE_CLIENT_SECRET = credentials.client_secret;
+    }
+    
+    // Validate that we actually got credentials
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+      CREDENTIALS_ERROR = 'Invalid credentials format';
+      console.error('[Google OAuth] Invalid credentials format - missing client_id or client_secret');
+    } else {
+      console.log('[Google OAuth] Credentials loaded successfully');
+    }
   }
 } catch (err) {
+  CREDENTIALS_ERROR = err.message;
   console.error('[Google OAuth] Failed to load credentials from google-credentials.json:', err.message);
 }
 
 // User-friendly Google sign-in IPC handler
 ipcMain.handle('google-sign-in-user-friendly', async () => {
   try {
+    // Check if credentials are available
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+      return { 
+        success: false, 
+        error: 'Google OAuth credentials not configured. Please add google-credentials.json file.' 
+      };
+    }
+
     const myOAuth = new ElectronGoogleOAuth2(
       GOOGLE_CLIENT_ID,
       GOOGLE_CLIENT_SECRET,
@@ -167,6 +190,22 @@ const createWindow = () => {
 
   // Open the DevTools.
   mainWindow.webContents.openDevTools();
+
+  // Show warning dialog if credentials failed to load
+  if (CREDENTIALS_ERROR) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        title: 'Google Credentials Missing',
+        message: 'Google OAuth credentials not found or invalid',
+        detail: `Error: ${CREDENTIALS_ERROR}\n\n` +
+                `Expected location: ${CREDENTIALS_PATH}\n\n` +
+                'Google Sign-In features will not work until you add a valid google-credentials.json file to the application directory.\n\n' +
+                'Please download your OAuth 2.0 credentials from Google Cloud Console and save them as "google-credentials.json" in the application folder.',
+        buttons: ['OK']
+      });
+    });
+  }
 };
 
 // This method will be called when Electron has finished
