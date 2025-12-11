@@ -177,7 +177,7 @@ const ReadAndSendExpenses = ({ topNotification, setTopNotification }) => {
           </div>
         ) : (
           <ul style={{ padding: 0, margin: 0 }}>
-            {folders.map(folder => (
+            {folders.sort((a, b) => a.localeCompare(b)).map(folder => (
               <li
                 key={folder}
                 style={{
@@ -213,7 +213,7 @@ const ReadAndSendExpenses = ({ topNotification, setTopNotification }) => {
                   }}
                   onMouseOver={e => e.currentTarget.style.background = '#1769aa'}
                   onMouseOut={e => e.currentTarget.style.background = '#2196f3'}
-                >Do Action</button>
+                >Entrar</button>
               </li>
             ))}
           </ul>
@@ -226,7 +226,7 @@ const ReadAndSendExpenses = ({ topNotification, setTopNotification }) => {
           >Back</button>
           <h2 style={{ marginBottom: 24 }}>Despesas Folder: {currentFolder}/despesas</h2>
           <ul style={{ position: 'relative', padding: 0, margin: 0 }}>
-            {subfolders.map(sub => (
+            {subfolders.sort((a, b) => a.localeCompare(b)).map(sub => (
               <li
                 key={sub}
                 style={{
@@ -482,14 +482,6 @@ const Configuration = ({ setRefreshGoogleStatusSignal }) => {
           >Send Test Email</button>
         )}
         <div style={{ marginTop: 32 }}>
-          {!googleSignedIn && (
-            <button
-              onClick={handleGoogleSignIn}
-              style={{ background: '#2196f3', color: '#fff', padding: '8px 16px', border: 'none', borderRadius: 4 }}
-            >
-              Sign in with Google
-            </button>
-          )}
           {awaitingGoogleCode && !showCodeModal && !googleSignedIn && (
             <button
               onClick={() => setShowCodeModal(true)}

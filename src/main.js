@@ -83,9 +83,12 @@ function archiveSentFolder(files, folder, event) {
   try {
     if (files && files.length > 0) {
       const filePath = files[0];
-      const parts = filePath.split(require('path').sep);
+      // Normalize ALL path separators for Windows compatibility (including those in folder names)
+      const normalizedPath = filePath.split('/').join(path.sep);
+      const parts = normalizedPath.split(path.sep);
       const idx = parts.findIndex(p => p.toLowerCase() === 'despesas');
       console.log('[Archive] filePath:', filePath);
+      console.log('[Archive] normalized path:', normalizedPath);
       console.log('[Archive] path parts:', parts);
       console.log('[Archive] index of "despesas":', idx);
       if (idx > 0) {
@@ -109,13 +112,75 @@ function archiveSentFolder(files, folder, event) {
           archivePath = require('path').join(tocOnlinePath, `${folder}_${timestamp}`);
         }
 
+        console.log('[Archive] sentFolderPath:', sentFolderPath);
+        console.log('[Archive] archivePath:', archivePath);
+        
         try {
-          fs.renameSync(sentFolderPath, archivePath);
-          // Optionally notify renderer of success
-          if (event && event.sender) {
-            event.sender.send('archive-success', `Folder archived as "${path.basename(archivePath)}"`);
+          // Check if source folder exists
+          if (!fs.existsSync(sentFolderPath)) {
+            console.error('[Archive] Source folder does not exist:', sentFolderPath);
+            if (event && event.sender) {
+              event.sender.send('archive-error', `Source folder not found: ${sentFolderPath}`);
+            }
+            return;
+          }
+
+          // Try to rename/move the folder
+          try {
+            fs.renameSync(sentFolderPath, archivePath);
+            console.log('[Archive] Successfully moved folder using renameSync');
+            if (event && event.sender) {
+              event.sender.send('archive-success', `Folder archived as "${path.basename(archivePath)}"`);
+            }
+          } catch (renameErr) {
+            console.log('[Archive] renameSync failed, attempting copy+delete:', renameErr.message);
+            // If rename fails (e.g., across drives on Windows), copy then delete
+            // Use a recursive copy approach
+            const copyRecursive = (src, dest) => {
+              const stats = fs.statSync(src);
+              if (stats.isDirectory()) {
+                if (!fs.existsSync(dest)) {
+                  fs.mkdirSync(dest, { recursive: true });
+                }
+                const entries = fs.readdirSync(src, { withFileTypes: true });
+                for (const entry of entries) {
+                  const srcPath = path.join(src, entry.name);
+                  const destPath = path.join(dest, entry.name);
+                  if (entry.isDirectory()) {
+                    copyRecursive(srcPath, destPath);
+                  } else {
+                    fs.copyFileSync(srcPath, destPath);
+                  }
+                }
+              } else {
+                fs.copyFileSync(src, dest);
+              }
+            };
+
+            const deleteRecursive = (dirPath) => {
+              if (fs.existsSync(dirPath)) {
+                const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+                for (const entry of entries) {
+                  const fullPath = path.join(dirPath, entry.name);
+                  if (entry.isDirectory()) {
+                    deleteRecursive(fullPath);
+                  } else {
+                    fs.unlinkSync(fullPath);
+                  }
+                }
+                fs.rmdirSync(dirPath);
+              }
+            };
+
+            copyRecursive(sentFolderPath, archivePath);
+            deleteRecursive(sentFolderPath);
+            console.log('[Archive] Successfully moved folder using copy+delete');
+            if (event && event.sender) {
+              event.sender.send('archive-success', `Folder archived as "${path.basename(archivePath)}"`);
+            }
           }
         } catch (err) {
+          console.error('[Archive] Failed to archive folder:', err);
           // Optionally notify renderer of error
           if (event && event.sender) {
             event.sender.send('archive-error', `Failed to archive folder: ${err.message}`);

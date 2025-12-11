@@ -29,7 +29,7 @@ const Sidebar = ({ currentView, setView, refreshGoogleStatusSignal }) => {
 
   // Listen for refresh signal
   useEffect(() => {
-    if (refreshGoogleStatusSignal) {
+    if (refreshGoogleStatusSignal !== undefined) {
       fetchEmailAndStatus();
     }
     // eslint-disable-next-line
@@ -65,16 +65,10 @@ const Sidebar = ({ currentView, setView, refreshGoogleStatusSignal }) => {
           {email ? (
             <>
               Signed in as:<br /><strong>{email}</strong>
-              {!googleLoggedIn && (
-                <div style={{ color: '#ff6666', marginTop: 8 }}>Not signed in to Google</div>
-              )}
             </>
           ) : (
             <>
-              Not signed in
-              {!googleLoggedIn && (
-                <div style={{ color: '#ff6666', marginTop: 8 }}>Not signed in to Google</div>
-              )}
+              Not signed in to Google
             </>
           )}
         </div>
