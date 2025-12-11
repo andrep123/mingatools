@@ -255,8 +255,10 @@ const createWindow = () => {
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  // Open the DevTools in development mode only
+  if (!app.isPackaged) {
+    mainWindow.webContents.openDevTools();
+  }
 
   // Show warning dialog if credentials failed to load
   if (CREDENTIALS_ERROR) {
