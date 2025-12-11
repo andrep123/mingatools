@@ -11,7 +11,9 @@ const googleOAuth = require('./google-oauth');
 const ElectronGoogleOAuth2 = require('electron-google-oauth2').default;
 
 // Load Google OAuth2 credentials from google-credentials.json (excluded from git)
-const CREDENTIALS_PATH = path.join(app.getAppPath(), 'google-credentials.json');
+const CREDENTIALS_PATH = app.isPackaged 
+  ? path.join(process.resourcesPath, 'google-credentials.json')
+  : path.join(app.getAppPath(), 'google-credentials.json');
 let GOOGLE_CLIENT_ID = '';
 let GOOGLE_CLIENT_SECRET = '';
 let CREDENTIALS_ERROR = null; // Track if there was an error loading credentials

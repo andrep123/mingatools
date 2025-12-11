@@ -7,7 +7,9 @@ const OAuth2Client = google.auth.OAuth2;
 const googleOAuth = require('./google-oauth');
 
 // Path to your downloaded OAuth2 credentials file
-const CREDENTIALS_PATH = path.join(app.getAppPath(), 'google-credentials.json');
+const CREDENTIALS_PATH = app.isPackaged 
+  ? path.join(process.resourcesPath, 'google-credentials.json')
+  : path.join(app.getAppPath(), 'google-credentials.json');
 const TOKEN_PATH = path.join(app.getPath('userData'), 'google-token.json');
 
 function getOAuth2Client() {
